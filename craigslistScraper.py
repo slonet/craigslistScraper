@@ -4,18 +4,22 @@ from contextlib import closing
 from bs4 import BeautifulSoup as BS
 import smtplib
 import ssl
+import getpass
+import time
 
 # The email account info for this script is:
 # Username: tyler.python.email@gmail.com
 # Password: See password store
+# This script only seems to work in python 3.5.6.
 
 email_port = 587
 password = ''
-addressFrom = 'tyler.python.email@gmail.com'
-addressTo = 'tyler.slone47@gmail.com'
+addressFrom = ''
+addressTo = ''
 url = 'https://losangeles.craigslist.org/search/zip?postedToday=1'
-keywords = ['table', 'desk']
-prev_matches = None
+keywords = []
+prev_matches = [[None]*4]
+
 
 def getPage(url):
 	try:
@@ -49,7 +53,7 @@ def fileDump(content):
 	fid.close()
 
 
-def grabResults(content):
+def getResults(content):
 	html = BS(content, 'html.parser')
 	p = html.select('p')
 	results = []
@@ -97,11 +101,69 @@ def searchResults(results, keywords):
 	return matching_results
 
 
-def getPassword():
+def filterNew(matches):
+	global prev_matches
+	new_posts = []
+
+	print('N matches = %i') % int(len(matches))
+	print('N prev matches = %i') % int(len(prev_matches))
+
+	for i in range(0,len(matches)):
+		for j in range(0,len(prev_matches)):			
+			if matches[i][3] != prev_matches[j][3]: # Did not find a duplicate. This is a new post!
+				new_posts.append(matches[i])        # Add the post to the output
+				prev_matches.append(matches[i])     # add the post to previous matches so we identify it as a duplicate next time
+
+	return new_posts
+
+
+def getAccounts():
+	global addressTo
+	global addressFrom
 	global password
-	password = input("Enter the email account password: ")
-	print(type(password))
-	print(password)
+
+	#addressTo = input("Enter the email address to receive notifications: ")
+	#addressFrom = input("Enter the email address to send notifications from: ")
+	#password = getpass.getpass(prompt = 'Enter the sending account password: ')
+
+	# For development use
+	addressTo = 'tyler.slone47@gmail.com'
+	addressFrom = 'tyler.python.email@gmail.com'
+	password = '8uOGFtr0lvoW'
+
+
+def getKeywords():
+	global keywords
+
+	userStr = input('Enter search keywords separated by commas: ')
+	userStr = userStr.split(',')
+
+	for i in range(0,len(userStr)):
+		if userStr[i][0] == ' ': # The first character is a space. Remove the 1st character.
+			userStr[i] = userStr[i][1:len(userStr[i])]
+
+		keywords.append(userStr[i])
+
+
+def makeEmail(match):
+	header = '''From: Craigslist Scraper <%s>
+
+	''' % addressFrom
+
+	contents = '''Craigslist Scraper has identified a new result that matches your keywords: %s
+
+	Title: %s
+	Posting Time: %s
+	Location: %s
+	Link to Post: %s
+
+	''' % (str(keywords).strip('[').strip(']'), match[0], match[1], match[2], match[3])
+
+	email = header + contents
+
+	print(email)
+
+	return email
 
 
 def sendEmail(addressFrom, addressTo, password, contents, port):
@@ -115,15 +177,31 @@ def sendEmail(addressFrom, addressTo, password, contents, port):
 		server.starttls(context=ctxt)
 		server.ehlo()
 		server.login(addressFrom, password)
-		#TODO: Send an email
+		
+		server.sendmail(addressFrom, addressTo, contents)
+
 	except Exception as e:
 		print(e)
 	finally:
 		server.quit()
 
-#content = getPage(url)
-#res = grabResults(content)
-#matches = searchResults(res, keywords)
-#print(matches)
-getPassword()
-sendEmail(addressFrom, addressTo, password, 'This is an email', email_port)
+
+def periodicScrape(period):
+	getAccounts()
+	getKeywords()
+
+	while(True):
+		content = getPage(url)
+		results = getResults(content)
+		matches = searchResults(results, keywords)
+		new_matches = filterNew(matches)
+
+		if len(new_matches) > 0: # There were new matches. Send emails.			
+			for i in range(0,len(new_matches)):
+				# Send an email with the new match
+				print(i)
+
+		time.sleep(period)
+
+
+periodicScrape(30)
