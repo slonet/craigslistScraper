@@ -12,13 +12,13 @@ import time
 # Password: See password store
 # This script only seems to work in python 3.5.6.
 
-email_port = 587
+port = 587
 password = ''
 addressFrom = ''
 addressTo = ''
 url = 'https://losangeles.craigslist.org/search/zip?postedToday=1'
 keywords = []
-prev_matches = [[None]*4]
+prev_matches = [['']]
 
 
 def getPage(url):
@@ -51,6 +51,16 @@ def fileDump(content):
 	fid = open('pageData.txt', 'w')
 	fid.write(content)
 	fid.close()
+
+
+def printTitles(results): # Prints only the titles of a results list
+	N = len(results)
+
+	if N == 0: return
+
+	for i in range(0,N):
+		string = str(i) + ': ' + results[i][0]
+		print(string)
 
 
 def getResults(content):
@@ -95,26 +105,45 @@ def searchResults(results, keywords):
 
 	for i in range(0, n_res):
 		for j in range(0, n_keys):
-			if results[i][0].find(keywords[j]) > -1: # Found a matching result
+			if results[i][0].upper().find(keywords[j].upper()) > -1: # Found a matching result
 				matching_results.append(results[i])
 
 	return matching_results
 
 
-def filterNew(matches):
+def manageResults(new_matches):
 	global prev_matches
-	new_posts = []
+	identical = []
 
-	print('N matches = %i') % int(len(matches))
-	print('N prev matches = %i') % int(len(prev_matches))
+	print('\n\n============================================')
+	print('\nPREVIOUS MATCHES\n')
+	printTitles(prev_matches)
+	print('\nNEW MATCHES\n')
+	printTitles(new_matches)
 
-	for i in range(0,len(matches)):
-		for j in range(0,len(prev_matches)):			
-			if matches[i][3] != prev_matches[j][3]: # Did not find a duplicate. This is a new post!
-				new_posts.append(matches[i])        # Add the post to the output
-				prev_matches.append(matches[i])     # add the post to previous matches so we identify it as a duplicate next time
+	# Compare the new and previous matching results
+	for i in range(0,len(prev_matches)):
+		for j in range(0,len(new_matches)):
+			if prev_matches[i] == new_matches[j]: # found an identical result. Record the new_matches index so we can remove it
+				identical.append(new_matches[j])
 
-	return new_posts
+	print('\nIDENTICAL MATCHES\n')
+	printTitles(identical)
+	# Remove the identical results
+	for i in range(0,len(identical)):
+		try:
+			new_matches.remove(identical[i])
+		except:
+			print('result error')
+
+	# Add the remaining non-matching results to previous results
+	for i in range(0,len(new_matches)):
+		prev_matches.append(new_matches[i])
+
+	print('\nUNIQUE MATCHES\n')
+	printTitles(new_matches)
+
+	return new_matches
 
 
 def getAccounts():
@@ -186,6 +215,20 @@ def sendEmail(addressFrom, addressTo, password, contents, port):
 		server.quit()
 
 
+def report(matches):
+	global addressFrom
+	global addressTo
+	global password
+	global port
+
+	# Iterate through the matching results and send an email for each one
+	N = len(matches)
+
+	for i in range(0,N):
+		email_body = makeEmail(matches[i])
+		sendEmail(addressFrom, addressTo, password, email_body, port)
+
+
 def periodicScrape(period):
 	getAccounts()
 	getKeywords()
@@ -193,15 +236,11 @@ def periodicScrape(period):
 	while(True):
 		content = getPage(url)
 		results = getResults(content)
-		matches = searchResults(results, keywords)
-		new_matches = filterNew(matches)
-
-		if len(new_matches) > 0: # There were new matches. Send emails.			
-			for i in range(0,len(new_matches)):
-				# Send an email with the new match
-				print(i)
+		new_matches = searchResults(results, keywords)
+		unique_matches = manageResults(new_matches)
+		report(unique_matches)
 
 		time.sleep(period)
 
 
-periodicScrape(30)
+periodicScrape(2)
