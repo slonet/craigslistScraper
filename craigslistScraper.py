@@ -158,7 +158,7 @@ def getAccounts():
 	# For development use
 	addressTo = 'tyler.slone47@gmail.com'
 	addressFrom = 'tyler.python.email@gmail.com'
-	password = '8uOGFtr0lvoW'
+	password = 'txS485FI0WI&'
 
 
 def getKeywords():
@@ -198,12 +198,10 @@ def makeEmail(match):
 def sendEmail(addressFrom, addressTo, password, contents, port):
 	server = 'smtp.gmail.com'
 
-	ctxt = ssl.create_default_context()
-
 	try:
 		server = smtplib.SMTP(server, port)
 		server.ehlo()
-		server.starttls(context=ctxt)
+		server.starttls()
 		server.ehlo()
 		server.login(addressFrom, password)
 		
@@ -243,4 +241,4 @@ def periodicScrape(period):
 		time.sleep(period)
 
 
-periodicScrape(2)
+periodicScrape(60)
